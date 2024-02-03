@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from typing import Any
 
@@ -793,6 +794,9 @@ def test_weighted_bad_dim(operation, as_dataset):
         getattr(data.weighted(weights), operation)(**kwargs)
 
 
+@pytest.mark.xfail(
+    reason="Reproduce bug, but does not fix it (GH https://github.com/pydata/xarray/issues/8583)"
+)
 def test_weighted_unexpected_aggregation_on_unrelated_variables():
     # https://github.com/pydata/xarray/issues/8583
     temperature_array = np.ones((2, 2, 3))
@@ -827,11 +831,9 @@ def test_weighted_unexpected_aggregation_on_unrelated_variables():
     assert all(xds_weighted_sum_xy["precipitation"] == xds["precipitation"])
 
 
-import re
-
-
-#  Dataset.weighted along a dimension not on weights errors #8679
 def test_weighted_along_dimension_not_on_weights():
+    # Dataset.weighted along a dimension not on weights errors #8679
+
     xds = xr.Dataset({"matrix": (("y", "x"), [[1, 2]]), "scalar": 1})
 
     expected_mean_x = xr.Dataset({"matrix": ("y", [1.5]), "scalar": 1})
@@ -855,16 +857,14 @@ def test_weighted_along_dimension_not_on_weights():
 
     # Verify weighted reduction of existing dimensions of the dataset
     assert all(xds.weighted(weights).mean("x") == expected_mean_x)
-    # ! Dimension(s) 'y' do not exist. Expected one or more of {'x'}
     # We can expect that the weights should just be ignored
-    # if reduction occurs along a non-weighted dim?
+    # if reduction occurs along a non-weighted dim.
     assert all(xds.weighted(weights).mean("y") == expected_mean_y)
     # Attempting reducing on a non-existing dimension of the dataset raises an error
     with pytest.raises(
         ValueError,
         match=re.escape(
             r"Dimension(s) 'i_do_not_exist' do not exist. Expected one or more of ('x', 'y')"
-            # r"Dimensions ('i_do_not_exist',) not found in DatasetWeighted dimensions ('x', 'y')"
         ),
     ):
         xds.weighted(weights).mean("i_do_not_exist")
@@ -882,9 +882,9 @@ def test_weighted_along_dimension_not_on_weights():
     # ):
     #     xds["scalar"].weighted(weights).mean("y")
 
-    assert xds["scalar"].weighted(weights).mean("y") == xds["scalar"]
     # Expected:
     # Just ignore the dimension, like for a regular non-weighted reduction
+    assert xds["scalar"].weighted(weights).mean("y") == xds["scalar"]
 
     # Current:
     # Reducing over a dimension that is neither on the weights nor on the variable.
