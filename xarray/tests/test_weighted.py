@@ -791,3 +791,111 @@ def test_weighted_bad_dim(operation, as_dataset):
         ),
     ):
         getattr(data.weighted(weights), operation)(**kwargs)
+
+
+def test_weighted_unexpected_aggregation_on_unrelated_variables():
+    # https://github.com/pydata/xarray/issues/8583
+    temperature_array = np.ones((2, 2, 3))
+    precipitation_array = np.ones(3)
+    longitude_array = np.arange(4).reshape(2, 2)
+    latitude_array = np.arange(4).reshape(2, 2)
+    time_array = np.arange(3)
+
+    xds = xr.Dataset(
+        {
+            "temperature": (["x", "y", "time"], temperature_array),
+            "precipitation": (["time"], precipitation_array),
+        },
+        coords={
+            "lon": (["x", "y"], longitude_array),
+            "lat": (["x", "y"], latitude_array),
+            "time": time_array,
+        },
+    )
+    # Precipitation (with no x or y dimension) is not summed over
+    xds_sum_xy = xds.sum(["x", "y"])
+    assert all(xds_sum_xy["precipitation"] == xds["precipitation"])
+
+    # Current:
+    # Precipitation is now summed over, leading to values [4. 4. 4.]
+    # Expected:
+    # Precipitation (with no x or y dimension) is not summed over
+    weights = xr.ones_like(xds["temperature"])
+
+    xds_weighted_sum_xy = xds.weighted(weights).sum(["x", "y"])
+    # TODO eschalk to fix -> precipitation must remain unchanged
+    assert all(xds_weighted_sum_xy["precipitation"] == xds["precipitation"])
+
+
+import re
+
+
+#  Dataset.weighted along a dimension not on weights errors #8679
+def test_weighted_along_dimension_not_on_weights():
+    xds = xr.Dataset({"matrix": (("y", "x"), [[1, 2]]), "scalar": 1})
+
+    expected_mean_x = xr.Dataset({"matrix": ("y", [1.5]), "scalar": 1})
+    expected_mean_y = xr.Dataset({"matrix": ("x", [1, 2]), "scalar": 1})
+
+    # Verify non-weighted reduction of existing dimensions of the dataset
+    assert all(xds.mean("x") == expected_mean_x)
+    assert all(xds.mean("y") == expected_mean_y)
+
+    # Attempting reducing on a non-existing dimension of the dataset raises an error
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            r"Dimensions ('i_do_not_exist',) not found in data dimensions ('x', 'y')"
+        ),
+    ):
+        xds.mean("i_do_not_exist")
+
+    # Weighted operation should be consistent with non-weighted ones
+    weights = xr.DataArray([1, 2], dims="x")
+
+    # Verify weighted reduction of existing dimensions of the dataset
+    assert all(xds.weighted(weights).mean("x") == expected_mean_x)
+    # ! Dimension(s) 'y' do not exist. Expected one or more of {'x'}
+    # We can expect that the weights should just be ignored
+    # if reduction occurs along a non-weighted dim?
+    assert all(xds.weighted(weights).mean("y") == expected_mean_y)
+    # Attempting reducing on a non-existing dimension of the dataset raises an error
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            r"Dimension(s) 'i_do_not_exist' do not exist. Expected one or more of ('x', 'y')"
+            # r"Dimensions ('i_do_not_exist',) not found in DatasetWeighted dimensions ('x', 'y')"
+        ),
+    ):
+        xds.weighted(weights).mean("i_do_not_exist")
+
+    assert all(
+        xds["matrix"].weighted(weights).mean("y") == xr.DataArray([1, 2], dims="x")
+    )
+    # Reducing over a dimension not present in weights
+    # # Current:
+    # with pytest.raises(
+    #     ValueError,
+    #     match=re.escape(
+    #         r"Dimensions ('y',) not found in DataArrayWeighted dimensions ('x',)"
+    #     ),
+    # ):
+    #     xds["scalar"].weighted(weights).mean("y")
+
+    assert xds["scalar"].weighted(weights).mean("y") == xds["scalar"]
+    # Expected:
+    # Just ignore the dimension, like for a regular non-weighted reduction
+
+    # Current:
+    # Reducing over a dimension that is neither on the weights nor on the variable.
+    # with pytest.raises(
+    #     ValueError,
+    #     match=re.escape(
+    #         r"Dimension(s) 'y' do not exist. Expected one or more of {'x'}"
+    #     ),
+    # ):
+    #     xds_weighted = xds.weighted(weights).mean("y")
+
+    # Expected: ignore the variables
+    xds_weighted = xds.weighted(weights).mean("y")
+    assert all(xds_weighted == expected_mean_y)

@@ -201,9 +201,11 @@ class Weighted(Generic[T_Xarray]):
             dims = list(dim)
         all_dims = set(self.obj.dims).union(set(self.weights.dims))
         missing_dims = set(dims) - all_dims
+        return missing_dims
         if missing_dims:
             raise ValueError(
-                f"Dimensions {tuple(missing_dims)} not found in {self.__class__.__name__} dimensions {tuple(all_dims)}"
+                f"Dimensions {tuple(sorted(missing_dims))} not found in "
+                f"{self.__class__.__name__} dimensions {tuple(sorted(all_dims))}"
             )
 
     @staticmethod
@@ -282,6 +284,18 @@ class Weighted(Generic[T_Xarray]):
         skipna: bool | None = None,
     ) -> T_DataArray:
         """Reduce a DataArray by a weighted ``mean`` along some dimension(s)."""
+
+        # TODO eschalk useless code below as the check is performed
+        # at higher level in DataArrayWeighted implementation
+        # Short-circuit
+        # It must be generalized to other aggregations
+        # (std etc)
+        # It must be made more resiliant (consider allcases of set intersections
+        # between weights' dims and da's dims, current logic is too simple)
+        # Simple logic: if the da's dims has none of the weights's dim,
+        # do not apply any reduction and return da
+        if len(set(da.dims) - set(self.weights.dims)) == 0:
+            return da
 
         weighted_sum = self._weighted_sum(da, dim=dim, skipna=skipna)
 
@@ -544,7 +558,12 @@ class Weighted(Generic[T_Xarray]):
 
 class DataArrayWeighted(Weighted["DataArray"]):
     def _implementation(self, func, dim, **kwargs) -> DataArray:
-        self._check_dim(dim)
+        missing_dims = self._check_dim(dim)
+
+        # If there are missing dims, it means no reduction has to happen
+        # along dim(s)
+        if missing_dims:
+            return self.obj
 
         dataset = self.obj._to_temp_dataset()
         dataset = dataset.map(func, dim=dim, **kwargs)
@@ -553,6 +572,8 @@ class DataArrayWeighted(Weighted["DataArray"]):
 
 class DatasetWeighted(Weighted["Dataset"]):
     def _implementation(self, func, dim, **kwargs) -> Dataset:
+        # Might be at the wrong level
+        # See https://github.com/pydata/xarray/issues/6952#issuecomment-1225884104
         self._check_dim(dim)
 
         return self.obj.map(func, dim=dim, **kwargs)

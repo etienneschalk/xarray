@@ -1,4 +1,5 @@
 """Internal utilities; not for external use"""
+
 # Some functions in this module are derived from functions in pandas. For
 # reference, here is a copy of the pandas copyright notice:
 
@@ -1098,8 +1099,10 @@ def _check_dims(dim: set[Hashable], all_dims: set[Hashable]) -> None:
     wrong_dims = (dim - all_dims) - {...}
     if wrong_dims:
         wrong_dims_str = ", ".join(f"'{d!s}'" for d in wrong_dims)
+        all_dims_sorted_tuple = tuple(sorted(all_dims))
         raise ValueError(
-            f"Dimension(s) {wrong_dims_str} do not exist. Expected one or more of {all_dims}"
+            f"Dimension(s) {wrong_dims_str} do not exist. "
+            f"Expected one or more of {all_dims_sorted_tuple}"
         )
 
 

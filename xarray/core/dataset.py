@@ -6822,10 +6822,10 @@ class Dataset(
         else:
             dims = set(dim)
 
-        missing_dimensions = tuple(d for d in dims if d not in self.dims)
+        missing_dimensions = tuple(sorted(d for d in dims if d not in self.dims))
         if missing_dimensions:
             raise ValueError(
-                f"Dimensions {missing_dimensions} not found in data dimensions {tuple(self.dims)}"
+                f"Dimensions {missing_dimensions} not found in data dimensions {tuple(sorted(self.dims))}"
             )
 
         if keep_attrs is None:
@@ -7921,10 +7921,12 @@ class Dataset(
 
     def sortby(
         self,
-        variables: Hashable
-        | DataArray
-        | Sequence[Hashable | DataArray]
-        | Callable[[Self], Hashable | DataArray | list[Hashable | DataArray]],
+        variables: (
+            Hashable
+            | DataArray
+            | Sequence[Hashable | DataArray]
+            | Callable[[Self], Hashable | DataArray | list[Hashable | DataArray]]
+        ),
         ascending: bool = True,
     ) -> Self:
         """
@@ -8969,10 +8971,9 @@ class Dataset(
         self,
         pad_width: Mapping[Any, int | tuple[int, int]] | None = None,
         mode: PadModeOptions = "constant",
-        stat_length: int
-        | tuple[int, int]
-        | Mapping[Any, tuple[int, int]]
-        | None = None,
+        stat_length: (
+            int | tuple[int, int] | Mapping[Any, tuple[int, int]] | None
+        ) = None,
         constant_values: (
             float | tuple[float, float] | Mapping[Any, tuple[float, float]] | None
         ) = None,
