@@ -770,6 +770,9 @@ class NamedArray(NamedArrayAggregations, Generic[_ShapeType_co, _DType_co]):
             raise ValueError("cannot supply both 'axis' and 'dim' arguments")
 
         if dim is not None:
+            # This is failing for DataArray but not Dataset
+            # DataArray: dim is given eg "x"
+            # Dataset: dim is None, it has been removed earlier
             axis = self.get_axis_num(dim)
 
         with warnings.catch_warnings():

@@ -794,11 +794,8 @@ def test_weighted_bad_dim(operation, as_dataset):
         getattr(data.weighted(weights), operation)(**kwargs)
 
 
-@pytest.mark.xfail(
-    reason="Reproduce bug, but does not fix it (GH https://github.com/pydata/xarray/issues/8583)"
-)
 def test_weighted_unexpected_aggregation_on_unrelated_variables():
-    # https://github.com/pydata/xarray/issues/8583
+    # See Issue #8583
     temperature_array = np.ones((2, 2, 3))
     precipitation_array = np.ones(3)
     longitude_array = np.arange(4).reshape(2, 2)
@@ -816,23 +813,27 @@ def test_weighted_unexpected_aggregation_on_unrelated_variables():
             "time": time_array,
         },
     )
-    # Precipitation (with no x or y dimension) is not summed over
+
+    # Non-weighted
     xds_sum_xy = xds.sum(["x", "y"])
+    assert all(xds_sum_xy["temperature"] == np.array([4, 4, 4]))
     assert all(xds_sum_xy["precipitation"] == xds["precipitation"])
 
-    # Current:
-    # Precipitation is now summed over, leading to values [4. 4. 4.]
-    # Expected:
-    # Precipitation (with no x or y dimension) is not summed over
+    # Weighted
     weights = xr.ones_like(xds["temperature"])
-
     xds_weighted_sum_xy = xds.weighted(weights).sum(["x", "y"])
-    # TODO eschalk to fix -> precipitation must remain unchanged
-    assert all(xds_weighted_sum_xy["precipitation"] == xds["precipitation"])
+    assert all(xds_weighted_sum_xy["temperature"] == np.array([4, 4, 4]))
+    # Actual behavior:
+    # Precipitation is now summed over, leading to values [4. 4. 4.]
+    assert all(xds_weighted_sum_xy["precipitation"] == np.array([4, 4, 4]))
+    # Behavior that user could have expected:
+    # Precipitation (with no x or y dimension) is not summed over
+    assert not all(xds_weighted_sum_xy["precipitation"] == xds["precipitation"])
 
 
 def test_weighted_along_dimension_not_on_weights():
-    # Dataset.weighted along a dimension not on weights errors #8679
+    # See Issue #8679
+    # Dataset.weighted along a dimension not on weights errors
 
     xds = xr.Dataset({"matrix": (("y", "x"), [[1, 2]]), "scalar": 1})
 
@@ -842,6 +843,20 @@ def test_weighted_along_dimension_not_on_weights():
     # Verify non-weighted reduction of existing dimensions of the dataset
     assert all(xds.mean("x") == expected_mean_x)
     assert all(xds.mean("y") == expected_mean_y)
+
+    # This works for reducing over a whole dataset.
+    # When trying to reduce over a plain dataarray not having the dim, error
+    # So, this dimension triage should be made on dataset level not dataarray level!
+    with pytest.raises(
+        ValueError,
+        match=re.escape(r"'x' not found in array dimensions ()"),
+    ):
+        xds["scalar"].mean("x")
+    with pytest.raises(
+        ValueError,
+        match=re.escape(r"'y' not found in array dimensions ()"),
+    ):
+        xds["scalar"].mean("y")
 
     # Attempting reducing on a non-existing dimension of the dataset raises an error
     with pytest.raises(
@@ -872,30 +887,134 @@ def test_weighted_along_dimension_not_on_weights():
     assert all(
         xds["matrix"].weighted(weights).mean("y") == xr.DataArray([1, 2], dims="x")
     )
-    # Reducing over a dimension not present in weights
-    # # Current:
-    # with pytest.raises(
-    #     ValueError,
-    #     match=re.escape(
-    #         r"Dimensions ('y',) not found in DataArrayWeighted dimensions ('x',)"
-    #     ),
-    # ):
-    #     xds["scalar"].weighted(weights).mean("y")
 
-    # Expected:
+    # Reducing over a dimension not present in weights
+    # Former:
+    try:
+        xds["scalar"].weighted(weights).mean("y")
+    except ValueError:
+        pytest.fail(
+            r"Dimensions ('y',) not found in DataArrayWeighted dimensions ('x',)"
+        )
+    # New expected behavior:
     # Just ignore the dimension, like for a regular non-weighted reduction
     assert xds["scalar"].weighted(weights).mean("y") == xds["scalar"]
 
-    # Current:
+    # Former:
     # Reducing over a dimension that is neither on the weights nor on the variable.
-    # with pytest.raises(
-    #     ValueError,
-    #     match=re.escape(
-    #         r"Dimension(s) 'y' do not exist. Expected one or more of {'x'}"
-    #     ),
-    # ):
-    #     xds_weighted = xds.weighted(weights).mean("y")
+    try:
+        xds_weighted = xds.weighted(weights).mean("y")
+    except ValueError:
+        pytest.fail(r"Dimension(s) 'y' do not exist. Expected one or more of {'x'}")
 
-    # Expected: ignore the variables
+    # New expected behavior:
+    # Ignore the variables
     xds_weighted = xds.weighted(weights).mean("y")
     assert all(xds_weighted == expected_mean_y)
+
+
+def test_non_weighted_vs_weighted_behaviour():
+    # Three scenarios for two reductions:
+    # - 1. DataArray
+    # - 2. Dataset without reduction dim
+    # - 3. Dataset with reduction dim
+
+    # Two parallel flows:
+    # - nw: Non-weighted. The reference.
+    # - w: Weighted. Behaviour expected to be aligned on the reference.
+
+    # A switch exists for the weighted flow:
+    # - assert_behaviour == "actual": Asserts against current behaviour (pass)
+    # - assert_behaviour == "expected": Asserts against expected behaviour (fail)
+    # When the new behaviour is implemented, keep the branch assert_behaviour == "expected".
+
+    # The tests describes the cartesian product of: (1, 2, 3) x (nw, w)
+
+    # Data Initialization
+    xda_1 = xr.DataArray(1)
+    xds_2 = xr.Dataset({"var": 1})
+    xds_3 = xr.Dataset({"var": 1, "x_dependant": ("x", [2, 4])})
+
+    X_NOT_FOUND_IN_ARRAY_DIMENSIONS_ERROR_MESSAGE = (
+        r"'x' not found in array dimensions ()"
+    )
+    DIM_X_NOT_FOUND_IN_DATA_DIM_ERROR_MESSAGE = (
+        r"Dimensions ('x',) not found in data dimensions ()"
+    )
+
+    assert_behaviour = "actual"
+    # assert_behaviour = "expected" # Keep this branch once implemented
+
+    # nw. Non-weighted reductions
+    # ---------------------------
+
+    # 1.nw
+    with pytest.raises(
+        ValueError,
+        match=re.escape(X_NOT_FOUND_IN_ARRAY_DIMENSIONS_ERROR_MESSAGE),
+    ):
+        xda_1.mean("x")
+
+    # 2.nw
+    # Logic is handled on Dataset level (File "xarray/xarray/core/dataset.py", line 6827, in reduce)
+    with pytest.raises(
+        ValueError,
+        match=re.escape(DIM_X_NOT_FOUND_IN_DATA_DIM_ERROR_MESSAGE),
+    ):
+        xds_2.mean("x")
+
+    # 3.nw
+    # OK: the reduction operation is applied only for variables dependant on the reduction dim,
+    # and skipped for other variables
+    xds_3.mean("x")
+
+    # w. Weighted reductions
+    # ----------------------
+
+    weights = xr.DataArray([1, 6], dims="x")
+
+    # Remove this branch when new behaviour is implemented.
+    if assert_behaviour == "actual":
+        # 1.w
+        # OK: Identical error than non-weighted reduction
+        with pytest.raises(
+            ValueError,
+            match=re.escape(X_NOT_FOUND_IN_ARRAY_DIMENSIONS_ERROR_MESSAGE),
+        ):
+            xda_1.weighted(weights).mean("x")
+
+        # 2.w
+        # NOK: Error as expected, but with a different error message.
+        # Logic is delegated to array-level reduction instead of the dataset level like non-weighted
+        with pytest.raises(
+            ValueError,
+            match=re.escape(X_NOT_FOUND_IN_ARRAY_DIMENSIONS_ERROR_MESSAGE),
+        ):
+            xds_2.weighted(weights).mean("x")
+
+        # 3.w
+        # NOK: Unexpected error
+        # Logic is delegated to array-level reduction instead of the dataset level like non-weighted
+        with pytest.raises(
+            ValueError, match=re.escape(X_NOT_FOUND_IN_ARRAY_DIMENSIONS_ERROR_MESSAGE)
+        ):
+            xds_3.weighted(weights).mean("x")
+
+    elif assert_behaviour == "expected":
+        # Same behaviour as non-weighted reductions is expected.
+        # 1.w
+        with pytest.raises(
+            ValueError,
+            match=re.escape(X_NOT_FOUND_IN_ARRAY_DIMENSIONS_ERROR_MESSAGE),
+        ):
+            xda_1.weighted(weights).mean("x")
+
+        # 2.w
+        with pytest.raises(
+            ValueError,
+            match=re.escape(DIM_X_NOT_FOUND_IN_DATA_DIM_ERROR_MESSAGE),
+        ):
+            xds_2.weighted(weights).mean("x")
+
+        # 3.w
+        xds_3.weighted(weights).mean("x")

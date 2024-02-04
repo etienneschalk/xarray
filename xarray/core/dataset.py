@@ -6833,7 +6833,9 @@ class Dataset(
 
         variables: dict[Hashable, Variable] = {}
         for name, var in self._variables.items():
-            reduce_dims = [d for d in var.dims if d in dims]
+            reduce_dims = [
+                d for d in var.dims if d in dims
+            ]  # Similar logic could be used for weighted reductions
             if name in self.coords:
                 if not reduce_dims:
                     variables[name] = var
@@ -6857,7 +6859,7 @@ class Dataset(
                     )
                     variables[name] = var.reduce(
                         func,
-                        dim=reduce_maybe_single,
+                        dim=reduce_maybe_single,  # This is removing the "x" dim for dataset scalar
                         keep_attrs=keep_attrs,
                         keepdims=keepdims,
                         **kwargs,

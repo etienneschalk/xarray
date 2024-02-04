@@ -269,8 +269,39 @@ class Weighted(Generic[T_Xarray]):
         skipna: bool | None = None,
     ) -> T_DataArray:
         """Reduce a DataArray by a weighted ``sum`` along some dimension(s)."""
+        if len(set(da.dims) - set(self.weights.dims)) == 0:
+            return da
 
         return self._reduce(da, self.weights, dim=dim, skipna=skipna)
+
+    def _ignore_reduction_condition(
+        self,
+        da: T_DataArray,
+        dim: Dims = None,
+    ) -> Literal["ignore", "weighted", "non-weighted"]:
+        if dim is None:
+            # Will be transformed to ... (rest of dims)
+            return "weighted"
+
+        reducing_dim_set = set(dim)
+        weights_dim_set = set(self.weights.dims)
+        da_dim_set = set(da.dims)
+        if len(set.intersection(da_dim_set, reducing_dim_set)) == 0:
+            # The data array do not share any of the reduction dims
+            # It must remain untouched
+            # This is the default behavior of reduction operations so rely on it
+            # return "ignore"
+            return "non-weighted"
+        if len(set.intersection(reducing_dim_set, weights_dim_set)) == 0:
+            # Reduction happens along a non-weighted dimension
+            # So it should be delegated to the regular non-weighted reduce
+            return "non-weighted"
+        if len(set.intersection(da_dim_set, weights_dim_set)) == 0:
+            # The reduced data array do not share any dim with the weighted
+            # So it should be delegated to the regular non-weighted reduce
+            return "non-weighted"
+
+        return "weighted"
 
     def _weighted_mean(
         self,
@@ -279,6 +310,19 @@ class Weighted(Generic[T_Xarray]):
         skipna: bool | None = None,
     ) -> T_DataArray:
         """Reduce a DataArray by a weighted ``mean`` along some dimension(s)."""
+        # Short-circuit
+        # It must be generalized to other aggregations
+        # (std etc)
+        # It must be made more resilient (consider all cases of set intersections
+        # between weights' dims and da's dims, current logic is too simple)
+        # Simple logic: if the da's dims has none of the weights's dim,
+        # do not apply any reduction and return da
+
+        reduction_type = self._ignore_reduction_condition(da, dim)
+        if reduction_type == "ignore":
+            return da
+        if reduction_type == "non-weighted":
+            return da.sum(dim=dim, skipna=skipna)
 
         weighted_sum = self._weighted_sum(da, dim=dim, skipna=skipna)
 
@@ -555,6 +599,8 @@ class DataArrayWeighted(Weighted["DataArray"]):
 
 class DatasetWeighted(Weighted["Dataset"]):
     def _implementation(self, func, dim, **kwargs) -> Dataset:
+        # self._check_dim(dim)
+
         return self.obj.map(func, dim=dim, **kwargs)
 
 
