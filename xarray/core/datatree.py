@@ -1235,7 +1235,7 @@ class DataTree(
         """
 
         obj = cls(
-            name=node_dict.get("name", "<UNNAMED>"),
+            name=node_dict.get("name", None),
             data=Dataset.from_dict(node_dict),
             children={
                 child_name: cls.from_dict_nested(child_node_dict)
