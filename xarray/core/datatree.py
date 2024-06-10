@@ -396,7 +396,7 @@ class DataTree(
 
         See Also
         --------
-        DataTree.from_dict
+        DataTree.from_paths_dict
         """
 
         # validate input
@@ -1053,7 +1053,7 @@ class DataTree(
         return self._replace(children=children_to_keep)
 
     @classmethod
-    def from_dict_nested(cls, node_dict: Mapping[Any, Any]) -> DataTree[Any]:
+    def from_nested_dict(cls, node_dict: Mapping[Any, Any]) -> DataTree[Any]:
         """Convert a dictionary into a DataTree.
 
         Parameters
@@ -1067,9 +1067,9 @@ class DataTree(
 
         See also
         --------
-        DataTree.to_dict_nested
-        DataTree.to_dict
-        Dataset.to_dict
+        DataTree.to_nested_dict
+        DataTree.to_paths_dict
+        Dataset.to_paths_dict
         DataArray.from_dict
 
         Examples
@@ -1196,7 +1196,7 @@ class DataTree(
         ...         },
         ...     },
         ... }
-        >>> dt.DataTree.from_dict_nested(basic_dict)
+        >>> dt.DataTree.from_nested_dict(basic_dict)
         DataTree('(root)', parent=None)
         │   Dimensions:  (time: 2)
         │   Coordinates:
@@ -1238,7 +1238,7 @@ class DataTree(
             name=node_dict.get("name", None),
             data=Dataset.from_dict(node_dict),
             children={
-                child_name: cls.from_dict_nested(child_node_dict)
+                child_name: cls.from_nested_dict(child_node_dict)
                 for child_name, child_node_dict in node_dict.get("children", {}).items()
             },
         )
@@ -1301,7 +1301,7 @@ class DataTree(
 
         return obj
 
-    def to_dict_nested(
+    def to_nested_dict(
         self,
         data: ToDictDataOptions = "list",
         encoding: bool = False,
@@ -1312,7 +1312,7 @@ class DataTree(
 
         The iteration over the tree is effectuated with :py:meth:`DataTree.subtree`.
 
-        The initial creation of node dictionaries is delegated to :py:meth:`Dataset.to_dict`,
+        The initial creation of node dictionaries is delegated to :py:meth:`Dataset.to_paths_dict`,
         using the immutable Dataset-like view provided by :py:attr:`Datatree.ds`.
 
         If this method is used with the final aim of dumping the tree to JSON, be cautious
@@ -1337,7 +1337,7 @@ class DataTree(
             underlying array type. If set to "list" (or True for backwards
             compatibility), returns data in lists of Python data types. Note
             that for obtaining the "list" output efficiently, use
-            ``ds.compute().to_dict(data="list")``.
+            ``ds.compute().to_paths_dict(data="list")``.
 
         encoding : bool, default: False
             Whether to include the Dataset's encoding in the dictionary.
@@ -1353,22 +1353,22 @@ class DataTree(
         Returns
         -------
         d : dict
-            Recursive dictionary inherited key from :py:meth:`Dataset.to_dict`:
+            Recursive dictionary inherited key from :py:meth:`Dataset.to_paths_dict`:
             "coords", "attrs", "dims", "data_vars" and optionally "encoding", as
             well as DataTree-specific keys: "name", "children" and optionally
             "path", "is_root", "is_leaf", "level", "depth", "width"
 
         See Also
         --------
-        DataTree.from_dict_nested
-        DataTree.from_dict
+        DataTree.from_nested_dict
+        DataTree.from_paths_dict
         Dataset.from_dict
-        Dataset.to_dict
+        Dataset.to_paths_dict
         """
 
         super_root_dict: dict[str, Any] = {"children": {}}
         for node in self.subtree:
-            node_dict = node.ds.to_dict(data=data, encoding=encoding)
+            node_dict = node.ds.to_paths_dict(data=data, encoding=encoding)
             node_dict["name"] = node.name
             if absolute_details:
                 node_dict.update(
@@ -1390,7 +1390,7 @@ class DataTree(
         root_dict = super_root_dict["children"]["/"]
         return root_dict
 
-    def to_dict(self) -> dict[str, Dataset]:
+    def to_paths_dict(self) -> dict[str, Dataset]:
         """
         Create a dictionary mapping of absolute node paths to the data contained in those nodes.
 
@@ -1566,7 +1566,7 @@ class DataTree(
         filtered_nodes = {
             node.path: node.ds for node in self.subtree if filterfunc(node)
         }
-        return DataTree.from_dict(filtered_nodes, name=self.root.name)
+        return DataTree.from_paths_dict(filtered_nodes, name=self.root.name)
 
     def match(self, pattern: str) -> DataTree:
         """
@@ -1591,7 +1591,7 @@ class DataTree(
 
         Examples
         --------
-        >>> dt = DataTree.from_dict(
+        >>> dt = DataTree.from_paths_dict(
         ...     {
         ...         "/a/A": None,
         ...         "/a/B": None,
@@ -1611,7 +1611,7 @@ class DataTree(
             for node in self.subtree
             if NodePath(node.path).match(pattern)
         }
-        return DataTree.from_dict(matching_nodes, name=self.root.name)
+        return DataTree.from_paths_dict(matching_nodes, name=self.root.name)
 
     def map_over_subtree(
         self,
