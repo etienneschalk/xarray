@@ -63,8 +63,8 @@ if TYPE_CHECKING:
     from xarray.core.types import (
         ErrorOptions,
         NetcdfWriteModes,
-        ZarrWriteModes,
         ToDictDataOptions,
+        ZarrWriteModes,
     )
 
 # """
@@ -396,7 +396,7 @@ class DataTree(
 
         See Also
         --------
-        DataTree.from_paths_dict
+        DataTree.from_dict
         """
 
         # validate input
@@ -1053,7 +1053,7 @@ class DataTree(
         return self._replace(children=children_to_keep)
 
     @classmethod
-    def from_dict(cls, node_dict: Mapping[Any, Any]) -> DataTree[Any]:
+    def from_native_dict(cls, node_dict: Mapping[Any, Any]) -> DataTree[Any]:
         """Convert a dictionary into a DataTree.
 
         Parameters
@@ -1067,8 +1067,7 @@ class DataTree(
 
         See also
         --------
-        DataTree.to_dict
-        DataTree.to_paths_dict
+        DataTree.to_native_dict
         Dataset.to_dict
         DataArray.from_dict
 
@@ -1238,13 +1237,13 @@ class DataTree(
             name=node_dict.get("name", None),
             data=Dataset.from_dict(node_dict),
             children={
-                child_name: cls.from_dict(child_node_dict)
+                child_name: cls.from_native_dict(child_node_dict)
                 for child_name, child_node_dict in node_dict.get("children", {}).items()
             },
         )
         return obj
 
-    def to_dict(
+    def to_native_dict(
         self,
         data: ToDictDataOptions = "list",
         encoding: bool = False,
@@ -1303,8 +1302,7 @@ class DataTree(
 
         See Also
         --------
-        DataTree.from_dict
-        DataTree.from_paths_dict
+        DataTree.from_native_dict
         Dataset.from_dict
         Dataset.to_dict
         """
@@ -1334,7 +1332,7 @@ class DataTree(
         return root_dict
 
     @classmethod
-    def from_paths_dict(
+    def from_dict(
         cls,
         d: MutableMapping[str, Dataset | DataArray | DataTree | None],
         name: str | None = None,
@@ -1390,7 +1388,7 @@ class DataTree(
 
         return obj
 
-    def to_paths_dict(self) -> dict[str, Dataset]:
+    def to_dict(self) -> dict[str, Dataset]:
         """
         Create a dictionary mapping of absolute node paths to the data contained in those nodes.
 
@@ -1566,7 +1564,7 @@ class DataTree(
         filtered_nodes = {
             node.path: node.ds for node in self.subtree if filterfunc(node)
         }
-        return DataTree.from_paths_dict(filtered_nodes, name=self.root.name)
+        return DataTree.from_dict(filtered_nodes, name=self.root.name)
 
     def match(self, pattern: str) -> DataTree:
         """
@@ -1591,7 +1589,7 @@ class DataTree(
 
         Examples
         --------
-        >>> dt = DataTree.from_paths_dict(
+        >>> dt = DataTree.from_dict(
         ...     {
         ...         "/a/A": None,
         ...         "/a/B": None,
@@ -1611,7 +1609,7 @@ class DataTree(
             for node in self.subtree
             if NodePath(node.path).match(pattern)
         }
-        return DataTree.from_paths_dict(matching_nodes, name=self.root.name)
+        return DataTree.from_dict(matching_nodes, name=self.root.name)
 
     def map_over_subtree(
         self,
