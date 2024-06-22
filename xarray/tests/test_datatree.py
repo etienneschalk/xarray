@@ -1,6 +1,7 @@
 import datetime
 from copy import copy, deepcopy
 from textwrap import dedent
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -910,7 +911,7 @@ class TestDocInsertion:
 class TestDictSerialization:
 
     @staticmethod
-    def create_test_data() -> DataTree:
+    def create_test_data() -> DataTree[Any]:
         # DataTree('(root)', parent=None)
         # │   Dimensions:  (time: 2)
         # │   Coordinates:
